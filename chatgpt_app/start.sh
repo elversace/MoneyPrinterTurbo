@@ -1,18 +1,31 @@
 #!/usr/bin/env sh
 set -eu
 
-export MPT_INTERNAL_PORT="${MPT_INTERNAL_PORT:-8081}"
-export MPT_BASE_URL="${MPT_BASE_URL:-http://127.0.0.1:${MPT_INTERNAL_PORT}}"
+export MPT_BASE_URL="${MPT_BASE_URL:-http://127.0.0.1:8081}"
 export MPT_SUBTITLE_TARGET_LANGUAGE="${MPT_SUBTITLE_TARGET_LANGUAGE:-English}"
 export MCP_HOST="${MCP_HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 
-# Run the MoneyPrinterTurbo API on a private loopback port so it cannot
-# conflict with Railway's public PORT used by the MCP server.
-python -m uvicorn app.asgi:app \
-  --host 127.0.0.1 \
-  --port "${MPT_INTERNAL_PORT}" \
-  --log-level warning &
+# Keep the internal MoneyPrinterTurbo API off Railway's public PORT.
+export MPT_LISTEN_HOST="${MPT_LISTEN_HOST:-127.0.0.1}"
+export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
+
+# Build a reusable portrait background so /TikTok can be tested without a
+# Pexels/Pixabay/Coverr API key. The clip is intentionally long and loops later
+# if narration exceeds its duration.
+BACKGROUND_DIR="/MoneyPrinterTurbo/resource/local"
+BACKGROUND_FILE="$BACKGROUND_DIR/tiktok-background.mp4"
+mkdir -p "$BACKGROUND_DIR"
+if [ ! -s "$BACKGROUND_FILE" ]; then
+  ffmpeg -hide_banner -loglevel error -y \
+    -f lavfi -i "color=c=0x101820:s=720x1280:r=30:d=90" \
+    -vf "format=yuv420p" \
+    -c:v libx264 -preset veryfast -crf 28 -movflags +faststart \
+    "$BACKGROUND_FILE"
+fi
+
+# Start MoneyPrinterTurbo API internally.
+python main.py &
 MPT_PID=$!
 
 cleanup() {
@@ -20,8 +33,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Give the internal API a brief startup window before exposing MCP.
 sleep "${MPT_STARTUP_DELAY:-5}"
 
-# Expose only the MCP HTTP server on the platform-provided public port.
+# Expose only the MCP HTTP server on Railway's public port.
 exec python chatgpt_app/server.py
