@@ -10,6 +10,17 @@ export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
 python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
 
+# Railway test instances are memory constrained. Render portrait at 720x1280,
+# still standard 9:16, to avoid FFmpeg broken-pipe/OOM failures during validation.
+python - <<'PY'
+from pathlib import Path
+p = Path('/MoneyPrinterTurbo/app/models/schema.py')
+s = p.read_text(encoding='utf-8')
+s = s.replace('return 1080, 1920', 'return 720, 1280', 1)
+p.write_text(s, encoding='utf-8')
+print('Applied Railway 720p portrait render profile', flush=True)
+PY
+
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   if [ ! -f /MoneyPrinterTurbo/config.toml ]; then
     cp /MoneyPrinterTurbo/config.example.toml /MoneyPrinterTurbo/config.toml
@@ -32,7 +43,6 @@ print("Configured MoneyPrinterTurbo LLM provider from OPENAI_API_KEY", flush=Tru
 PY
 fi
 
-# MoneyPrinterTurbo only accepts local materials inside storage/local_videos.
 BACKGROUND_DIR="/MoneyPrinterTurbo/storage/local_videos"
 BACKGROUND_FILE="$BACKGROUND_DIR/tiktok-background.mp4"
 mkdir -p "$BACKGROUND_DIR"
@@ -40,7 +50,7 @@ if [ ! -s "$BACKGROUND_FILE" ]; then
   ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i "color=c=0x101820:s=720x1280:r=30:d=90" \
     -vf "format=yuv420p" \
-    -c:v libx264 -preset veryfast -crf 28 -movflags +faststart \
+    -c:v libx264 -preset ultrafast -crf 30 -movflags +faststart \
     "$BACKGROUND_FILE"
 fi
 
