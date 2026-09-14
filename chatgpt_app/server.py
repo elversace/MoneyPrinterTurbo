@@ -20,6 +20,13 @@ mcp = FastMCP(
         "portrait 9:16, TikTok-oriented pacing, and English subtitle delivery. "
         "Do not ask the user to choose language, platform, or aspect ratio."
     ),
+    host=MCP_HOST,
+    port=MCP_PORT,
+    stateless_http=True,
+    json_response=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
 )
 
 
@@ -129,13 +136,4 @@ async def tiktok_defaults() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mcp.run(
-        transport="streamable-http",
-        host=MCP_HOST,
-        port=MCP_PORT,
-        stateless_http=True,
-        json_response=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=False,
-        ),
-    )
+    mcp.run(transport="streamable-http")
