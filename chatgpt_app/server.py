@@ -1,20 +1,23 @@
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
 
 APP_NAME = "TikTok"
 MPT_BASE_URL = os.getenv("MPT_BASE_URL", "http://127.0.0.1:8081").rstrip("/")
 MPT_API_KEY = os.getenv("MPT_API_KEY", "").strip()
 MPT_ARABIC_VOICE = os.getenv("MPT_ARABIC_VOICE", "ar-SA-HamedNeural-Male").strip()
-# Local video inputs are intentionally resolved by MoneyPrinterTurbo inside
-# storage/local_videos. Passing only the filename satisfies that sandbox.
 MPT_LOCAL_BACKGROUND = os.getenv("MPT_LOCAL_BACKGROUND", "tiktok-background.mp4").strip()
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
 DEFAULT_DURATION_SECONDS = 60
+TASKS_ROOT = Path("/MoneyPrinterTurbo/storage/tasks")
 
 mcp = FastMCP(
     APP_NAME,
@@ -22,9 +25,7 @@ mcp = FastMCP(
         "Create TikTok-ready short videos with MoneyPrinterTurbo. Default behavior is fixed: "
         "Arabic script and Arabic narration, portrait 9:16, TikTok-oriented pacing, English "
         "subtitle delivery, and a target duration of 60 seconds. Generate an Arabic spoken "
-        "script sized for about one minute (roughly 130-150 Arabic words) and pass it in "
-        "arabic_script; do not ask the user to choose language, platform, aspect ratio, or "
-        "duration unless they explicitly request a different duration."
+        "script sized for about one minute and pass it in arabic_script."
     ),
     host=MCP_HOST,
     port=MCP_PORT,
@@ -41,12 +42,22 @@ def _headers() -> dict[str, str]:
     return headers
 
 
+@mcp.custom_route("/videos/{task_id}/{filename}", methods=["GET"])
+async def generated_video(request: Request):
+    task_id = request.path_params.get("task_id", "")
+    filename = request.path_params.get("filename", "")
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", task_id) or not re.fullmatch(r"final-[0-9]+\.mp4", filename):
+        return JSONResponse({"error": "invalid video path"}, status_code=400)
+    task_dir = (TASKS_ROOT / task_id).resolve()
+    file_path = (task_dir / filename).resolve()
+    if TASKS_ROOT.resolve() not in file_path.parents or not file_path.is_file():
+        return JSONResponse({"error": "video not found"}, status_code=404)
+    return FileResponse(file_path, media_type="video/mp4", filename=filename)
+
+
 @mcp.tool(name="create_tiktok_video", description=(
-    "Create a TikTok video. Generate a concise Arabic spoken script first, sized for about "
-    "60 seconds by default (roughly 130-150 Arabic words), then pass it in arabic_script. "
-    "Arabic narration, portrait 9:16, English subtitles, and a 60-second target duration "
-    "are fixed defaults unless a different duration is explicitly requested. A built-in "
-    "local portrait background is used by default so no stock-video API key is required."
+    "Create a TikTok video with Arabic narration, portrait 9:16 and a 60-second target. "
+    "A built-in local portrait background is used for validation renders."
 ))
 async def create_tiktok_video(topic: str, arabic_script: str, duration_seconds: int = DEFAULT_DURATION_SECONDS, style: str | None = None) -> dict[str, Any]:
     topic = (topic or "").strip()
@@ -58,7 +69,6 @@ async def create_tiktok_video(topic: str, arabic_script: str, duration_seconds: 
     duration_seconds = int(duration_seconds or DEFAULT_DURATION_SECONDS)
     if duration_seconds < 15 or duration_seconds > 180:
         raise ValueError("duration_seconds must be between 15 and 180 seconds")
-
     body = {
         "video_subject": topic,
         "video_script": arabic_script,
@@ -95,7 +105,6 @@ async def create_tiktok_video(topic: str, arabic_script: str, duration_seconds: 
         "subtitle_language": "English", "aspect_ratio": "9:16",
         "duration_target_seconds": duration_seconds, "style": style,
         "video_source": "local_test_background", "moneyprinterturbo": result,
-        "note": "Arabic narration, portrait 9:16 and a 60-second target are enabled. Actual render length follows synthesized narration."
     }
 
 
@@ -105,8 +114,6 @@ async def tiktok_defaults() -> dict[str, Any]:
         "platform": "TikTok", "script_language": "Arabic", "narration_language": "Arabic",
         "subtitle_language": "English", "aspect_ratio": "9:16", "duration_seconds": 60,
         "video_count": 1, "video_source": "local_test_background",
-        "background_music": "disabled_in_test_mode", "external_script_llm_required": False,
-        "stock_video_api_key_required": False, "subtitle_translation_provider_required": True,
     }
 
 
