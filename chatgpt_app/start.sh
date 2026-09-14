@@ -10,6 +10,32 @@ export PORT="${PORT:-8000}"
 export MPT_LISTEN_HOST="${MPT_LISTEN_HOST:-127.0.0.1}"
 export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
+# Use the Railway OpenAI secret for subtitle translation without committing it.
+# MoneyPrinterTurbo reads LLM credentials from config.toml, so hydrate that file
+# from environment variables at container startup.
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  if [ ! -f /MoneyPrinterTurbo/config.toml ]; then
+    cp /MoneyPrinterTurbo/config.example.toml /MoneyPrinterTurbo/config.toml
+  fi
+  python - <<'PY'
+import os
+import toml
+
+path = "/MoneyPrinterTurbo/config.toml"
+cfg = toml.load(path)
+app = cfg.setdefault("app", {})
+app["llm_provider"] = "openai"
+app["openai_api_key"] = os.environ["OPENAI_API_KEY"]
+if os.getenv("OPENAI_MODEL_NAME"):
+    app["openai_model_name"] = os.environ["OPENAI_MODEL_NAME"]
+if os.getenv("OPENAI_BASE_URL"):
+    app["openai_base_url"] = os.environ["OPENAI_BASE_URL"]
+with open(path, "w", encoding="utf-8") as f:
+    toml.dump(cfg, f)
+print("Configured MoneyPrinterTurbo LLM provider from OPENAI_API_KEY", flush=True)
+PY
+fi
+
 # Build a reusable portrait background so /TikTok can be tested without a
 # Pexels/Pixabay/Coverr API key. The clip is intentionally long and loops later
 # if narration exceeds its duration.
