@@ -1,0 +1,30 @@
+name: TikTok ChatGPT App Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'chatgpt_app/**'
+      - 'app/services/subtitle.py'
+      - 'Dockerfile.chatgpt'
+      - '.github/workflows/chatgpt-app-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile changed Python files
+        run: |
+          python -m py_compile chatgpt_app/server.py app/services/subtitle.py
+
+      - name: Build ChatGPT container
+        run: docker build -f Dockerfile.chatgpt -t moneyprinterturbo-tiktok:smoke .
