@@ -2,7 +2,9 @@
 set -eu
 
 export MPT_BASE_URL="${MPT_BASE_URL:-http://127.0.0.1:8081}"
-export MPT_SUBTITLE_TARGET_LANGUAGE="${MPT_SUBTITLE_TARGET_LANGUAGE:-English}"
+# Use English when the variable is absent, but preserve an explicitly empty value
+# so diagnostic/test renders can bypass external translation providers.
+export MPT_SUBTITLE_TARGET_LANGUAGE="${MPT_SUBTITLE_TARGET_LANGUAGE-English}"
 export MCP_HOST="${MCP_HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 
@@ -16,8 +18,6 @@ export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
 
 # Use the Railway OpenAI secret for subtitle translation without committing it.
-# MoneyPrinterTurbo reads LLM credentials from config.toml, so hydrate that file
-# from environment variables at container startup.
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   if [ ! -f /MoneyPrinterTurbo/config.toml ]; then
     cp /MoneyPrinterTurbo/config.example.toml /MoneyPrinterTurbo/config.toml
@@ -41,9 +41,6 @@ print("Configured MoneyPrinterTurbo LLM provider from OPENAI_API_KEY", flush=Tru
 PY
 fi
 
-# Build a reusable portrait background so /TikTok can be tested without a
-# Pexels/Pixabay/Coverr API key. The clip is intentionally long and loops later
-# if narration exceeds its duration.
 BACKGROUND_DIR="/MoneyPrinterTurbo/resource/local"
 BACKGROUND_FILE="$BACKGROUND_DIR/tiktok-background.mp4"
 mkdir -p "$BACKGROUND_DIR"
@@ -55,7 +52,6 @@ if [ ! -s "$BACKGROUND_FILE" ]; then
     "$BACKGROUND_FILE"
 fi
 
-# Start MoneyPrinterTurbo API internally.
 python main.py &
 MPT_PID=$!
 MCP_PID=""
@@ -70,8 +66,6 @@ trap cleanup EXIT INT TERM
 
 sleep "${MPT_STARTUP_DELAY:-5}"
 
-# Start MCP HTTP server. Keep it in the background when a local self-test is
-# requested so the test can exercise the real Streamable HTTP transport.
 if [ "${MPT_RUN_SELF_TEST:-0}" = "1" ]; then
   python chatgpt_app/server.py &
   MCP_PID=$!
