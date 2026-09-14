@@ -10,6 +10,11 @@ export PORT="${PORT:-8000}"
 export MPT_LISTEN_HOST="${MPT_LISTEN_HOST:-127.0.0.1}"
 export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
+# Patch subtitle translation so English subtitles still work when the configured
+# LLM provider is unavailable. The fallback uses deep-translator/GoogleTranslator
+# and preserves the original SRT timings.
+python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
+
 # Use the Railway OpenAI secret for subtitle translation without committing it.
 # MoneyPrinterTurbo reads LLM credentials from config.toml, so hydrate that file
 # from environment variables at container startup.
