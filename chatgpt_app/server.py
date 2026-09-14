@@ -15,15 +15,18 @@ MPT_LOCAL_BACKGROUND = os.getenv(
 ).strip()
 MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
+DEFAULT_DURATION_SECONDS = 60
 
 mcp = FastMCP(
     APP_NAME,
     instructions=(
         "Create TikTok-ready short videos with MoneyPrinterTurbo. "
         "Default behavior is fixed: Arabic script and Arabic narration, portrait 9:16, "
-        "TikTok-oriented pacing, and English subtitle delivery. Generate the Arabic "
-        "spoken script yourself and pass it in arabic_script; do not ask the user to "
-        "choose language, platform, or aspect ratio."
+        "TikTok-oriented pacing, English subtitle delivery, and a target duration of "
+        "60 seconds. Generate an Arabic spoken script sized for about one minute "
+        "(roughly 130-150 Arabic words) and pass it in arabic_script; do not ask the "
+        "user to choose language, platform, aspect ratio, or duration unless they "
+        "explicitly request a different duration."
     ),
     host=MCP_HOST,
     port=MCP_PORT,
@@ -45,16 +48,18 @@ def _headers() -> dict[str, str]:
 @mcp.tool(
     name="create_tiktok_video",
     description=(
-        "Create a TikTok video. Generate a concise Arabic spoken script first, then pass "
-        "it in arabic_script. Arabic narration, portrait 9:16, and English subtitles "
-        "are fixed defaults. A built-in local portrait background is used by default so "
-        "no stock-video API key is required for test renders."
+        "Create a TikTok video. Generate a concise Arabic spoken script first, sized "
+        "for about 60 seconds by default (roughly 130-150 Arabic words), then pass it "
+        "in arabic_script. Arabic narration, portrait 9:16, English subtitles, and a "
+        "60-second target duration are fixed defaults unless a different duration is "
+        "explicitly requested. A built-in local portrait background is used by default "
+        "so no stock-video API key is required for test renders."
     ),
 )
 async def create_tiktok_video(
     topic: str,
     arabic_script: str,
-    duration_seconds: int | None = None,
+    duration_seconds: int = DEFAULT_DURATION_SECONDS,
     style: str | None = None,
 ) -> dict[str, Any]:
     topic = (topic or "").strip()
@@ -64,8 +69,14 @@ async def create_tiktok_video(
     if not arabic_script:
         raise ValueError("arabic_script is required")
 
+    duration_seconds = int(duration_seconds or DEFAULT_DURATION_SECONDS)
+    if duration_seconds < 15 or duration_seconds > 180:
+        raise ValueError("duration_seconds must be between 15 and 180 seconds")
+
     # Keep the script generation inside ChatGPT. This removes the need for an
-    # external LLM key for the narration text itself.
+    # external LLM key for the narration text itself. The final runtime duration
+    # follows the synthesized Arabic narration; callers should size the script for
+    # the requested target duration (60 seconds by default).
     body = {
         "video_subject": topic,
         "video_script": arabic_script,
@@ -79,7 +90,7 @@ async def create_tiktok_video(
             {
                 "provider": "local",
                 "url": MPT_LOCAL_BACKGROUND,
-                "duration": 90,
+                "duration": max(90, duration_seconds + 15),
             }
         ],
         "voice_name": MPT_ARABIC_VOICE,
@@ -120,8 +131,9 @@ async def create_tiktok_video(
         "moneyprinterturbo": result,
         "note": (
             "The Arabic script is supplied directly by ChatGPT and stock-video keys are "
-            "not required in test mode. English subtitle translation still uses the "
-            "configured MoneyPrinterTurbo translation provider."
+            "not required in test mode. The target duration is 60 seconds by default; "
+            "actual render length follows the synthesized narration. English subtitle "
+            "translation uses the configured MoneyPrinterTurbo translation provider."
         ),
     }
 
@@ -137,6 +149,7 @@ async def tiktok_defaults() -> dict[str, Any]:
         "narration_language": "Arabic",
         "subtitle_language": "English",
         "aspect_ratio": "9:16",
+        "duration_seconds": DEFAULT_DURATION_SECONDS,
         "video_count": 1,
         "video_source": "local_test_background",
         "background_music": "disabled_in_test_mode",
