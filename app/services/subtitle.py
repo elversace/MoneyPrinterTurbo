@@ -103,11 +103,9 @@ def create(audio_file, subtitle_file: str = "", word_level: bool = False):
                     is_segmented = True
 
                 seg_end = word.end
-                # If it contains punctuation, then break the sentence.
                 seg_text += word.word
 
                 if utils.str_contains_punctuation(word.word):
-                    # remove last char
                     seg_text = seg_text[:-1]
                     if not seg_text:
                         continue
@@ -151,7 +149,7 @@ def create(audio_file, subtitle_file: str = "", word_level: bool = False):
     logger.info(f"subtitle file created: {subtitle_file}")
 
 
-def file_to_subtitles(filename):
+def _read_subtitle_items(filename):
     if not filename or not os.path.isfile(filename):
         return []
 
@@ -171,13 +169,80 @@ def file_to_subtitles(filename):
             elif current_times:
                 current_text += line
 
-    # Flush the final block. SRT files whose last subtitle is not followed by a
-    # trailing blank line never hit the blank-line branch above, so without this
-    # the last subtitle would be silently dropped.
     if current_times:
         index += 1
         times_texts.append((index, current_times.strip(), current_text.strip()))
     return times_texts
+
+
+def _strip_json_fence(value: str) -> str:
+    value = (value or "").strip()
+    if value.startswith("```"):
+        value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\s*```$", "", value)
+    return value.strip()
+
+
+def _translate_subtitle_items(filename, items, target_language: str):
+    target_language = (target_language or "").strip()
+    if not target_language or not items:
+        return items
+
+    marker = f"{filename}.{target_language.lower()}.translated"
+    if os.path.isfile(marker):
+        return items
+
+    source_texts = [item[2] for item in items]
+    prompt = (
+        f"Translate the following subtitle cues into {target_language}. "
+        "Return ONLY a valid JSON array of strings, with exactly the same number "
+        "of elements and in exactly the same order. Keep each translation concise "
+        "for on-screen subtitles. Do not merge, split, number, explain, or add markdown. "
+        "Preserve names, numbers, and meaning. Input JSON:\n"
+        + json.dumps(source_texts, ensure_ascii=False)
+    )
+
+    try:
+        # Import lazily to avoid a module-level circular import: task imports both
+        # subtitle and llm during service startup.
+        from app.services import llm
+
+        translated_raw = llm._generate_response(prompt)
+        translated = json.loads(_strip_json_fence(translated_raw))
+        if not isinstance(translated, list) or len(translated) != len(items):
+            raise ValueError(
+                "subtitle translation returned an unexpected number of cues"
+            )
+        if not all(isinstance(text, str) and text.strip() for text in translated):
+            raise ValueError("subtitle translation returned an empty or invalid cue")
+    except Exception as exc:
+        logger.error(f"failed to translate subtitles to {target_language}: {exc}")
+        raise
+
+    translated_items = []
+    with open(filename, "w", encoding="utf-8") as fd:
+        for i, (item, translated_text) in enumerate(zip(items, translated), start=1):
+            clean_text = translated_text.strip()
+            translated_item = (i, item[1], clean_text)
+            translated_items.append(translated_item)
+            fd.write(f"{i}\n{item[1]}\n{clean_text}\n\n")
+
+    with open(marker, "w", encoding="utf-8") as fd:
+        fd.write(target_language)
+
+    logger.success(
+        f"translated {len(translated_items)} subtitle cues to {target_language} "
+        "while preserving the original timing"
+    )
+    return translated_items
+
+
+def file_to_subtitles(filename):
+    items = _read_subtitle_items(filename)
+    target_language = os.getenv("MPT_SUBTITLE_TARGET_LANGUAGE", "").strip()
+    if target_language:
+        items = _translate_subtitle_items(filename, items, target_language)
+    return items
 
 
 def levenshtein_distance(s1, s2):
@@ -207,7 +272,10 @@ def similarity(a, b):
 
 
 def correct(subtitle_file, video_script):
-    subtitle_items = file_to_subtitles(subtitle_file)
+    # Use the raw reader here so optional target-language translation happens only
+    # after timing/text correction is finished. Otherwise correction would compare
+    # translated English cues against the original Arabic script and overwrite them.
+    subtitle_items = _read_subtitle_items(subtitle_file)
     normalized_script = utils.normalize_script_for_subtitle_matching(video_script)
     script_lines = utils.split_string_by_punctuations(normalized_script)
 
@@ -269,7 +337,6 @@ def correct(subtitle_file, video_script):
             script_index += 1
             subtitle_index = next_subtitle_index
 
-    # Process the remaining lines of the script.
     while script_index < len(script_lines):
         logger.warning(f"Extra script line: {script_lines[script_index]}")
         if subtitle_index < len(subtitle_items):
