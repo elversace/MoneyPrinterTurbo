@@ -27,13 +27,26 @@ fi
 # Start MoneyPrinterTurbo API internally.
 python main.py &
 MPT_PID=$!
+MCP_PID=""
 
 cleanup() {
+  if [ -n "$MCP_PID" ]; then
+    kill "$MCP_PID" 2>/dev/null || true
+  fi
   kill "$MPT_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 sleep "${MPT_STARTUP_DELAY:-5}"
 
-# Expose only the MCP HTTP server on Railway's public port.
-exec python chatgpt_app/server.py
+# Start MCP HTTP server. Keep it in the background when a local self-test is
+# requested so the test can exercise the real Streamable HTTP transport.
+if [ "${MPT_RUN_SELF_TEST:-0}" = "1" ]; then
+  python chatgpt_app/server.py &
+  MCP_PID=$!
+  sleep "${MCP_SELF_TEST_DELAY:-3}"
+  python chatgpt_app/self_test.py || true
+  wait "$MCP_PID"
+else
+  exec python chatgpt_app/server.py
+fi
