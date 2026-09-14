@@ -3,11 +3,14 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 APP_NAME = "TikTok"
 MPT_BASE_URL = os.getenv("MPT_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 MPT_API_KEY = os.getenv("MPT_API_KEY", "").strip()
 MPT_ARABIC_VOICE = os.getenv("MPT_ARABIC_VOICE", "ar-SA-HamedNeural-Male").strip()
+MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0")
+MCP_PORT = int(os.getenv("PORT", os.getenv("MCP_PORT", "8000")))
 
 mcp = FastMCP(
     APP_NAME,
@@ -39,7 +42,6 @@ async def create_tiktok_video(
     duration_seconds: int | None = None,
     style: str | None = None,
 ) -> dict[str, Any]:
-    """Start a TikTok video generation task in MoneyPrinterTurbo."""
     topic = (topic or "").strip()
     if not topic:
         raise ValueError("topic is required")
@@ -127,4 +129,13 @@ async def tiktok_defaults() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    mcp.run(
+        transport="streamable-http",
+        host=MCP_HOST,
+        port=MCP_PORT,
+        stateless_http=True,
+        json_response=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        ),
+    )
