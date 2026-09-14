@@ -2,22 +2,14 @@
 set -eu
 
 export MPT_BASE_URL="${MPT_BASE_URL:-http://127.0.0.1:8081}"
-# Use English when the variable is absent, but preserve an explicitly empty value
-# so diagnostic/test renders can bypass external translation providers.
 export MPT_SUBTITLE_TARGET_LANGUAGE="${MPT_SUBTITLE_TARGET_LANGUAGE-English}"
 export MCP_HOST="${MCP_HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
-
-# Keep the internal MoneyPrinterTurbo API off Railway's public PORT.
 export MPT_LISTEN_HOST="${MPT_LISTEN_HOST:-127.0.0.1}"
 export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
-# Patch subtitle translation so English subtitles still work when the configured
-# LLM provider is unavailable. The fallback uses deep-translator/GoogleTranslator
-# and preserves the original SRT timings.
 python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
 
-# Use the Railway OpenAI secret for subtitle translation without committing it.
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   if [ ! -f /MoneyPrinterTurbo/config.toml ]; then
     cp /MoneyPrinterTurbo/config.example.toml /MoneyPrinterTurbo/config.toml
@@ -25,7 +17,6 @@ if [ -n "${OPENAI_API_KEY:-}" ]; then
   python - <<'PY'
 import os
 import toml
-
 path = "/MoneyPrinterTurbo/config.toml"
 cfg = toml.load(path)
 app = cfg.setdefault("app", {})
@@ -41,7 +32,8 @@ print("Configured MoneyPrinterTurbo LLM provider from OPENAI_API_KEY", flush=Tru
 PY
 fi
 
-BACKGROUND_DIR="/MoneyPrinterTurbo/resource/local"
+# MoneyPrinterTurbo only accepts local materials inside storage/local_videos.
+BACKGROUND_DIR="/MoneyPrinterTurbo/storage/local_videos"
 BACKGROUND_FILE="$BACKGROUND_DIR/tiktok-background.mp4"
 mkdir -p "$BACKGROUND_DIR"
 if [ ! -s "$BACKGROUND_FILE" ]; then
@@ -55,15 +47,11 @@ fi
 python main.py &
 MPT_PID=$!
 MCP_PID=""
-
 cleanup() {
-  if [ -n "$MCP_PID" ]; then
-    kill "$MCP_PID" 2>/dev/null || true
-  fi
+  if [ -n "$MCP_PID" ]; then kill "$MCP_PID" 2>/dev/null || true; fi
   kill "$MPT_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
-
 sleep "${MPT_STARTUP_DELAY:-5}"
 
 if [ "${MPT_RUN_SELF_TEST:-0}" = "1" ]; then
