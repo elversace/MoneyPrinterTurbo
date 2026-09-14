@@ -2,6 +2,7 @@
 set -eu
 
 export MPT_BASE_URL="${MPT_BASE_URL:-http://127.0.0.1:8080}"
+export MPT_SUBTITLE_TARGET_LANGUAGE="${MPT_SUBTITLE_TARGET_LANGUAGE:-English}"
 export MCP_HOST="${MCP_HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 
