@@ -36,48 +36,56 @@ jobs:
           EOF
           edge-tts --voice ar-JO-TaimNeural --rate=-4% --text "$(cat render/script.txt)" --write-media render/narration.mp3
 
-      - name: Create English subtitles
+      - name: Create concise English subtitles
         run: |
           cat > render/subtitles.srt <<'EOF'
           1
-          00:00:00,000 --> 00:00:06,000
-          Five sports cars worth watching in 2026.
+          00:00:00,000 --> 00:00:05,000
+          Five sports cars to watch in 2026.
 
           2
-          00:00:06,000 --> 00:00:12,000
-          No. 5: Aston Martin Vantage — elegant design and serious power.
+          00:00:05,000 --> 00:00:10,000
+          No. 5: Aston Martin Vantage.
 
           3
-          00:00:12,000 --> 00:00:18,000
-          No. 4: Chevrolet Corvette Z06.
+          00:00:10,000 --> 00:00:15,000
+          Elegant design. Serious power.
 
           4
-          00:00:18,000 --> 00:00:24,000
-          Sharp American performance with impressive cornering balance.
+          00:00:15,000 --> 00:00:20,000
+          No. 4: Chevrolet Corvette Z06.
 
           5
-          00:00:24,000 --> 00:00:30,000
-          No. 3: Porsche 911 GT3 — engineered for pure driving.
+          00:00:20,000 --> 00:00:25,000
+          American power. Sharp cornering.
 
           6
-          00:00:30,000 --> 00:00:36,000
-          Precision, response, and a true driver's character.
+          00:00:25,000 --> 00:00:30,000
+          No. 3: Porsche 911 GT3.
 
           7
-          00:00:36,000 --> 00:00:42,000
-          No. 2: Ferrari 296 Speciale — advanced hybrid performance.
+          00:00:30,000 --> 00:00:35,000
+          Built for pure driving.
 
           8
-          00:00:42,000 --> 00:00:48,000
-          Fast response and sophisticated aerodynamics.
+          00:00:35,000 --> 00:00:40,000
+          No. 2: Ferrari 296 Speciale.
 
           9
-          00:00:48,000 --> 00:00:54,000
-          No. 1: Lamborghini Revuelto — V12 power meets hybrid technology.
+          00:00:40,000 --> 00:00:45,000
+          Hybrid power. Advanced aero.
 
           10
-          00:00:54,000 --> 00:01:00,000
-          German precision, Italian drama, and American muscle.
+          00:00:45,000 --> 00:00:50,000
+          No. 1: Lamborghini Revuelto.
+
+          11
+          00:00:50,000 --> 00:00:55,000
+          V12 power meets hybrid technology.
+
+          12
+          00:00:55,000 --> 00:01:00,000
+          Precision, drama, and muscle.
           EOF
 
       - name: Build full-car 9x16 visual reel
@@ -93,13 +101,13 @@ jobs:
       - name: Burn subtitles and export MP4
         run: |
           ffmpeg -hide_banner -loglevel error -y -i render/visuals.mp4 -i render/narration.mp3 \
-            -map 0:v:0 -map 1:a:0 -vf "subtitles=render/subtitles.srt:force_style='FontName=DejaVu Sans,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'" \
-            -c:v libx264 -preset veryfast -crf 21 -c:a aac -b:a 160k -t 60 -movflags +faststart render/fusha-sports-cars-2026-v2.mp4
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026-v2.mp4
+            -map 0:v:0 -map 1:a:0 -vf "subtitles=render/subtitles.srt:force_style='FontName=DejaVu Sans,FontSize=11,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,BorderStyle=1,Outline=1,Shadow=0,Alignment=2,MarginV=55'" \
+            -c:v libx264 -preset veryfast -crf 21 -c:a aac -b:a 160k -t 60 -movflags +faststart render/fusha-sports-cars-2026-v3.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026-v3.mp4
 
       - name: Upload MP4
         uses: actions/upload-artifact@v4
         with:
-          name: fusha-sports-cars-2026-v2
-          path: render/fusha-sports-cars-2026-v2.mp4
+          name: fusha-sports-cars-2026-v3
+          path: render/fusha-sports-cars-2026-v3.mp4
           retention-days: 7
