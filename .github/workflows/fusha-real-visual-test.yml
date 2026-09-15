@@ -17,7 +17,7 @@ jobs:
       - name: Install render dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
           python -m pip install --upgrade pip edge-tts
 
       - name: Download real CC0 sports-car visuals
@@ -29,32 +29,77 @@ jobs:
           curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Ferrari%20296%20Speciale%20%282026%29%20%2855080072923%29.jpg?width=1280' -o render/images/04.jpg
           curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Lamborghini%20Revuelto%20%282026%29%20%2855082446885%29.jpg?width=1280' -o render/images/05.jpg
 
-      - name: Generate Arabic Fusha narration
+      - name: Generate Arabic Fusha narration with a new voice
         run: |
           cat > render/script.txt <<'EOF'
           إليك خمس سيارات رياضية تستحق المتابعة في عام 2026. في المركز الخامس، أستون مارتن فانتج، بتصميم أنيق ومحرك قوي يمنحها حضوراً مميزاً على الطريق. في المركز الرابع، شيفروليه كورفيت زد صفر ستة، التي تجمع بين الأداء الأمريكي الحاد والتوازن المذهل في المنعطفات. ثالثاً، بورشه تسعمئة وإحدى عشرة جي تي ثري، سيارة دقيقة صُممت لعشاق القيادة الخالصة. في المركز الثاني، فيراري مئتان وستة وتسعون سبيشيالي، بقوة هجينة واستجابة سريعة وديناميكا هوائية متقدمة. وفي المركز الأول، لامبورغيني ريفويلتو، التي تمزج محرك اثنتي عشرة أسطوانة مع التقنية الهجينة لتقدم تجربة خارقة. هذه السيارات تمثل تنوع الأداء الرياضي الحديث، من الدقة الألمانية إلى الجرأة الإيطالية والقوة الأمريكية.
           EOF
-          edge-tts --voice ar-SA-HamedNeural --rate=-4% --text "$(cat render/script.txt)" --write-media render/narration.mp3
+          edge-tts --voice ar-JO-TaimNeural --rate=-4% --text "$(cat render/script.txt)" --write-media render/narration.mp3
 
-      - name: Build cinematic 9x16 visual reel
+      - name: Create English subtitles
+        run: |
+          cat > render/subtitles.srt <<'EOF'
+          1
+          00:00:00,000 --> 00:00:06,000
+          Five sports cars worth watching in 2026.
+
+          2
+          00:00:06,000 --> 00:00:12,000
+          No. 5: Aston Martin Vantage — elegant design and serious power.
+
+          3
+          00:00:12,000 --> 00:00:18,000
+          No. 4: Chevrolet Corvette Z06.
+
+          4
+          00:00:18,000 --> 00:00:24,000
+          Sharp American performance with impressive cornering balance.
+
+          5
+          00:00:24,000 --> 00:00:30,000
+          No. 3: Porsche 911 GT3 — engineered for pure driving.
+
+          6
+          00:00:30,000 --> 00:00:36,000
+          Precision, response, and a true driver's character.
+
+          7
+          00:00:36,000 --> 00:00:42,000
+          No. 2: Ferrari 296 Speciale — advanced hybrid performance.
+
+          8
+          00:00:42,000 --> 00:00:48,000
+          Fast response and sophisticated aerodynamics.
+
+          9
+          00:00:48,000 --> 00:00:54,000
+          No. 1: Lamborghini Revuelto — V12 power meets hybrid technology.
+
+          10
+          00:00:54,000 --> 00:01:00,000
+          German precision, Italian drama, and American muscle.
+          EOF
+
+      - name: Build full-car 9x16 visual reel
         run: |
           for i in 01 02 03 04 05; do
             ffmpeg -hide_banner -loglevel error -y -loop 1 -i render/images/$i.jpg -t 12 \
-              -vf "scale=780:1380:force_original_aspect_ratio=increase,crop=720:1280,zoompan=z='min(zoom+0.00028,1.055)':d=360:s=720x1280:fps=30,format=yuv420p" \
-              -an -c:v libx264 -preset veryfast -crf 23 render/clips/$i.mp4
+              -filter_complex "[0:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=18:1[bg];[0:v]scale=680:1180:force_original_aspect_ratio=decrease[car];[bg][car]overlay=(W-w)/2:(H-h)/2,format=yuv420p" \
+              -an -r 30 -c:v libx264 -preset veryfast -crf 22 render/clips/$i.mp4
           done
           printf "file '%s'\n" "$PWD/render/clips/01.mp4" "$PWD/render/clips/02.mp4" "$PWD/render/clips/03.mp4" "$PWD/render/clips/04.mp4" "$PWD/render/clips/05.mp4" > render/concat.txt
           ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i render/concat.txt -c copy render/visuals.mp4
 
-      - name: Mix narration and export MP4
+      - name: Burn subtitles and export MP4
         run: |
           ffmpeg -hide_banner -loglevel error -y -i render/visuals.mp4 -i render/narration.mp3 \
-            -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart render/fusha-sports-cars-2026.mp4
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026.mp4
+            -map 0:v:0 -map 1:a:0 -vf "subtitles=render/subtitles.srt:force_style='FontName=DejaVu Sans,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'" \
+            -c:v libx264 -preset veryfast -crf 21 -c:a aac -b:a 160k -t 60 -movflags +faststart render/fusha-sports-cars-2026-v2.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026-v2.mp4
 
       - name: Upload MP4
         uses: actions/upload-artifact@v4
         with:
-          name: fusha-sports-cars-2026
-          path: render/fusha-sports-cars-2026.mp4
+          name: fusha-sports-cars-2026-v2
+          path: render/fusha-sports-cars-2026-v2.mp4
           retention-days: 7
