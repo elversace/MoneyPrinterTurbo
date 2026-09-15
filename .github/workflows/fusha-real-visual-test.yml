@@ -48,7 +48,7 @@ jobs:
 
       - name: Mix narration and export MP4
         run: |
-          ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i render/visuals.mp4 -i render/narration.mp3 \
+          ffmpeg -hide_banner -loglevel error -y -i render/visuals.mp4 -i render/narration.mp3 \
             -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart render/fusha-sports-cars-2026.mp4
           ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026.mp4
 
