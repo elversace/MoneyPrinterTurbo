@@ -10,8 +10,7 @@ export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
 python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
 
-# Low-memory validation profile. Keeps 9:16 while preventing Railway's 1 GB
-# container from killing FFmpeg/MoviePy during the test render.
+# Low-memory Railway profile: portrait 9:16 while staying below the 1 GB limit.
 python - <<'PY'
 from pathlib import Path
 p = Path('/MoneyPrinterTurbo/app/models/schema.py')
@@ -38,16 +37,37 @@ print('Configured MoneyPrinterTurbo LLM provider from OPENAI_API_KEY', flush=Tru
 PY
 fi
 
+# Build a real 60-second portrait visual reel from CC0 Wikimedia Commons photos.
+# The five subjects match the Arabic Fusha validation script.
 BACKGROUND_DIR="/MoneyPrinterTurbo/storage/local_videos"
+IMG_DIR="$BACKGROUND_DIR/car_images"
 BACKGROUND_FILE="$BACKGROUND_DIR/tiktok-background.mp4"
-mkdir -p "$BACKGROUND_DIR"
-# 480px width stays above MoneyPrinterTurbo's local-material minimum while
-# reducing decode memory versus 720p.
-ffmpeg -hide_banner -loglevel error -y \
-  -f lavfi -i "color=c=0x101820:s=480x854:r=24:d=90" \
-  -vf "format=yuv420p" \
-  -c:v libx264 -preset ultrafast -crf 32 -movflags +faststart \
-  "$BACKGROUND_FILE"
+mkdir -p "$IMG_DIR"
+
+fetch_image() {
+  out="$1"
+  url="$2"
+  echo "Downloading real visual: $out" >&2
+  curl -fL --retry 3 --connect-timeout 15 -A "MoneyPrinterTurbo-TikTok/1.0" "$url" -o "$IMG_DIR/$out"
+}
+
+fetch_image "01-aston.jpg" "https://commons.wikimedia.org/wiki/Special:Redirect/file/Aston%20Martin%20Vantage%20Coup%C3%A9%20%282025%29%20%2854801016671%29.jpg?width=1280"
+fetch_image "02-corvette.jpg" "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chevrolet%20Corvette%20Z06%20Coup%C3%A9%20%28C8%2C%202023%29%20%2854802404220%29.jpg?width=1280"
+fetch_image "03-porsche.jpg" "https://commons.wikimedia.org/wiki/Special:Redirect/file/Porsche%20911%20GT3%20Touring%20%28992.2%29%20001.jpg?width=1280"
+fetch_image "04-ferrari.jpg" "https://commons.wikimedia.org/wiki/Special:Redirect/file/Ferrari%20296%20Speciale%20%282026%29%20%2855080072923%29.jpg?width=1280"
+fetch_image "05-lamborghini.jpg" "https://commons.wikimedia.org/wiki/Special:Redirect/file/Lamborghini%20Revuelto%20%282026%29%20%2855082446885%29.jpg?width=1280"
+
+: > "$BACKGROUND_DIR/concat.txt"
+for img in 01-aston.jpg 02-corvette.jpg 03-porsche.jpg 04-ferrari.jpg 05-lamborghini.jpg; do
+  clip="$BACKGROUND_DIR/${img%.jpg}.mp4"
+  ffmpeg -hide_banner -loglevel error -y -loop 1 -i "$IMG_DIR/$img" -t 12 \
+    -vf "scale=520:900:force_original_aspect_ratio=increase,crop=480:854,zoompan=z='min(zoom+0.00035,1.06)':d=288:s=480x854:fps=24,format=yuv420p" \
+    -an -c:v libx264 -preset ultrafast -crf 30 -movflags +faststart "$clip"
+  printf "file '%s'\n" "$clip" >> "$BACKGROUND_DIR/concat.txt"
+done
+ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$BACKGROUND_DIR/concat.txt" \
+  -c copy -movflags +faststart "$BACKGROUND_FILE"
+echo "Built real-car 60-second portrait visual reel: $BACKGROUND_FILE" >&2
 
 python main.py &
 MPT_PID=$!
