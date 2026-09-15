@@ -3,9 +3,23 @@ from pathlib import Path
 path = Path('/MoneyPrinterTurbo/app/services/subtitle.py')
 text = path.read_text(encoding='utf-8')
 old = '''    except Exception as exc:\n        logger.error(f"failed to translate subtitles to {target_language}: {exc}")\n        raise\n'''
-new = '''    except Exception as exc:\n        logger.warning(\n            f"LLM subtitle translation failed for {target_language}: {exc}; "\n            "falling back to throttled GoogleTranslator"\n        )\n        try:\n            import time\n            from deep_translator import GoogleTranslator\n\n            translator = GoogleTranslator(source="auto", target="en")\n            translated = []\n            for cue_text in source_texts:\n                last_error = None\n                for attempt in range(4):\n                    try:\n                        translated_text = translator.translate(cue_text)\n                        if translated_text and translated_text.strip():\n                            translated.append(translated_text.strip())\n                            last_error = None\n                            break\n                    except Exception as translate_exc:\n                        last_error = translate_exc\n                    time.sleep(1.0 + attempt * 1.5)\n                if last_error is not None:\n                    raise last_error\n                time.sleep(0.35)\n\n            if len(translated) != len(items):\n                raise ValueError(\n                    "fallback subtitle translation returned an unexpected number of cues"\n                )\n            logger.success(\n                f"fallback subtitle translation succeeded for {len(translated)} cues"\n            )\n        except Exception as fallback_exc:\n            logger.error(\n                f"failed to translate subtitles to {target_language}; "\n                f"LLM error: {exc}; fallback error: {fallback_exc}"\n            )\n            raise fallback_exc\n'''
+new = '''    except Exception as exc:\n        logger.warning(\n            f"subtitle translation to {target_language} failed: {exc}; "\n            "continuing with original subtitle cues so video rendering is not blocked"\n        )\n        # Fail open: keep the original timed cues. This guarantees that subtitle\n        # translation problems never abort the entire video pipeline.\n        return items\n'''
 if old not in text:
-    print('Subtitle fallback patch already applied or target block changed', flush=True)
+    # Also replace the older GoogleTranslator fallback block if it was already patched.
+    marker_start = '    except Exception as exc:\n        logger.warning(\n            f"LLM subtitle translation failed for {target_language}: {exc}; "'
+    marker_end = '            raise fallback_exc\n'
+    start = text.find(marker_start)
+    if start != -1:
+        end = text.find(marker_end, start)
+        if end != -1:
+            end += len(marker_end)
+            text = text[:start] + new + text[end:]
+            path.write_text(text, encoding='utf-8')
+            print('Replaced Google subtitle fallback with fail-open behavior', flush=True)
+        else:
+            print('Subtitle fallback end marker not found', flush=True)
+    else:
+        print('Subtitle translation patch already applied or target block changed', flush=True)
 else:
     path.write_text(text.replace(old, new, 1), encoding='utf-8')
-    print('Applied subtitle translation fallback patch', flush=True)
+    print('Applied fail-open subtitle translation patch', flush=True)
