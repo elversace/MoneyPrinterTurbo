@@ -9,6 +9,7 @@ export MPT_LISTEN_HOST="${MPT_LISTEN_HOST:-127.0.0.1}"
 export MPT_LISTEN_PORT="${MPT_LISTEN_PORT:-8081}"
 
 python /MoneyPrinterTurbo/chatgpt_app/patch_subtitle_fallback.py
+python /MoneyPrinterTurbo/chatgpt_app/patch_web_task.py
 
 python - <<'PY'
 from pathlib import Path
