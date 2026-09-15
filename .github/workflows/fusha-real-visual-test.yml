@@ -1,0 +1,60 @@
+name: Fusha Real Visual TikTok Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fusha-real-visual-test.yml'
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install render dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip edge-tts
+
+      - name: Download real CC0 sports-car visuals
+        run: |
+          mkdir -p render/images render/clips
+          curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Aston%20Martin%20Vantage%20Coup%C3%A9%20%282025%29%20%2854801016671%29.jpg?width=1280' -o render/images/01.jpg
+          curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Chevrolet%20Corvette%20Z06%20Coup%C3%A9%20%28C8%2C%202023%29%20%2854802404220%29.jpg?width=1280' -o render/images/02.jpg
+          curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Porsche%20911%20GT3%20Touring%20%28992.2%29%20001.jpg?width=1280' -o render/images/03.jpg
+          curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Ferrari%20296%20Speciale%20%282026%29%20%2855080072923%29.jpg?width=1280' -o render/images/04.jpg
+          curl -fL --retry 3 -A 'MoneyPrinterTurbo-TikTok/1.0' 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Lamborghini%20Revuelto%20%282026%29%20%2855082446885%29.jpg?width=1280' -o render/images/05.jpg
+
+      - name: Generate Arabic Fusha narration
+        run: |
+          cat > render/script.txt <<'EOF'
+          إليك خمس سيارات رياضية تستحق المتابعة في عام 2026. في المركز الخامس، أستون مارتن فانتج، بتصميم أنيق ومحرك قوي يمنحها حضوراً مميزاً على الطريق. في المركز الرابع، شيفروليه كورفيت زد صفر ستة، التي تجمع بين الأداء الأمريكي الحاد والتوازن المذهل في المنعطفات. ثالثاً، بورشه تسعمئة وإحدى عشرة جي تي ثري، سيارة دقيقة صُممت لعشاق القيادة الخالصة. في المركز الثاني، فيراري مئتان وستة وتسعون سبيشيالي، بقوة هجينة واستجابة سريعة وديناميكا هوائية متقدمة. وفي المركز الأول، لامبورغيني ريفويلتو، التي تمزج محرك اثنتي عشرة أسطوانة مع التقنية الهجينة لتقدم تجربة خارقة. هذه السيارات تمثل تنوع الأداء الرياضي الحديث، من الدقة الألمانية إلى الجرأة الإيطالية والقوة الأمريكية.
+          EOF
+          edge-tts --voice ar-SA-HamedNeural --rate=-4% --text "$(cat render/script.txt)" --write-media render/narration.mp3
+
+      - name: Build cinematic 9x16 visual reel
+        run: |
+          for i in 01 02 03 04 05; do
+            ffmpeg -hide_banner -loglevel error -y -loop 1 -i render/images/$i.jpg -t 12 \
+              -vf "scale=780:1380:force_original_aspect_ratio=increase,crop=720:1280,zoompan=z='min(zoom+0.00028,1.055)':d=360:s=720x1280:fps=30,format=yuv420p" \
+              -an -c:v libx264 -preset veryfast -crf 23 render/clips/$i.mp4
+          done
+          printf "file '%s'\n" "$PWD/render/clips/01.mp4" "$PWD/render/clips/02.mp4" "$PWD/render/clips/03.mp4" "$PWD/render/clips/04.mp4" "$PWD/render/clips/05.mp4" > render/concat.txt
+          ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i render/concat.txt -c copy render/visuals.mp4
+
+      - name: Mix narration and export MP4
+        run: |
+          ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i render/visuals.mp4 -i render/narration.mp3 \
+            -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart render/fusha-sports-cars-2026.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 render/fusha-sports-cars-2026.mp4
+
+      - name: Upload MP4
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusha-sports-cars-2026
+          path: render/fusha-sports-cars-2026.mp4
+          retention-days: 7
